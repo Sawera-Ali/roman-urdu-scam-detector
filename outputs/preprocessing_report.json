@@ -1,0 +1,126 @@
+{
+    "generated_at": "2026-09-01T21:25:12",
+    "dataset_path": "D:\\Roman Urdu Scam Detector\\data\\raw\\scam_msgs_authentic_1.xlsx",
+    "initial_records": 549,
+    "columns": [
+        "msg",
+        "status",
+        "Authentic/Synthetic"
+    ],
+    "validation": {
+        "initial_records": 549,
+        "missing_messages": 0,
+        "empty_messages": 1,
+        "missing_labels": 0,
+        "invalid_labels": 0,
+        "duplicate_messages": 4,
+        "conflicting_label_groups": 1,
+        "valid_records_after_cleaning": 543
+    },
+    "label_normalization": {
+        "labels_normalized": 10,
+        "label_spellings_fixed": {
+            "scam": 9,
+            "Genuine ": 1
+        },
+        "invalid_labels": 0,
+        "invalid_label_values": {}
+    },
+    "invalid_row_removal": {
+        "missing_messages_removed": 0,
+        "empty_messages_removed": 1,
+        "invalid_label_rows_removed": 0,
+        "records_before": 549,
+        "records_after": 548
+    },
+    "duplicate_removal": {
+        "records_before": 548,
+        "records_after": 543,
+        "duplicates_removed": 3,
+        "conflicting_label_groups": 1,
+        "conflicting_rows_removed": 2,
+        "conflicting_examples": [
+            {
+                "text": "Jazz Caller Name service se Caller ka naam call uthane se pehle screen pr dekhen. (Rs.3.2/Day Inc.Tax) Service lagane k liye SUB likh k iss SMS ka reply kren",
+                "labels": [
+                    "Genuine",
+                    "Scam"
+                ],
+                "copies": 2
+            }
+        ],
+        "conflicting_label_policy": "drop"
+    },
+    "empty_after_cleaning_removed": 0,
+    "cleaned_text_duplicates": {
+        "unique_cleaned_texts": 238,
+        "cleaned_duplicate_rows": 305,
+        "cleaned_duplicate_groups": 60,
+        "largest_template_group": 18
+    },
+    "final_records": 543,
+    "statistics": {
+        "total_records": 543,
+        "scam_count": 278,
+        "genuine_count": 265,
+        "authentic_count": 43,
+        "synthetic_count": 500,
+        "label_distribution": {
+            "Scam": 278,
+            "Genuine": 265
+        },
+        "source_distribution": {
+            "Synthetic": 500,
+            "Authentic": 43
+        }
+    },
+    "split": {
+        "test_size": 0.2,
+        "random_state": 42,
+        "stratified": true,
+        "training_records": 434,
+        "testing_records": 109,
+        "training_label_distribution": {
+            "Scam": 222,
+            "Genuine": 212
+        },
+        "testing_label_distribution": {
+            "Scam": 56,
+            "Genuine": 53
+        }
+    },
+    "train_test_overlap": {
+        "test_records": 109,
+        "test_records_also_in_train": 75,
+        "test_overlap_percent": 68.81
+    },
+    "tfidf": {
+        "settings": {
+            "lowercase": false,
+            "ngram_range": [
+                1,
+                2
+            ],
+            "min_df": 1,
+            "max_df": 1.0,
+            "sublinear_tf": true
+        },
+        "n_features": 1656,
+        "train_matrix_shape": [
+            434,
+            1656
+        ],
+        "test_matrix_shape": [
+            109,
+            1656
+        ],
+        "fitted_on": "training data only (no data leakage)"
+    },
+    "output_files": {
+        "cleaned_dataset": "D:\\Roman Urdu Scam Detector\\data\\processed\\cleaned_dataset.csv",
+        "train_dataset": "D:\\Roman Urdu Scam Detector\\data\\processed\\train.csv",
+        "test_dataset": "D:\\Roman Urdu Scam Detector\\data\\processed\\test.csv",
+        "tfidf_vectorizer": "D:\\Roman Urdu Scam Detector\\outputs\\tfidf_vectorizer.pkl",
+        "preprocessing_report": "D:\\Roman Urdu Scam Detector\\outputs\\preprocessing_report.json"
+    }
+}
