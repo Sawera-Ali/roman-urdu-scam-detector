@@ -1,244 +1,146 @@
-const scamExample =
-  'Congratulations! Aap ne 50000 ka prize jeeta hai, claim karein: bit.ly/win2024';
-
-const genuineExample =
-  'Kal meeting 11 baje hai office mein, time pe pohanch jana.';
-
+'use strict';
 const $ = (selector) => document.querySelector(selector);
-
-const messageInput = $('#messageInput');
-const resultCard = $('#resultCard');
-const errorState = $('#errorState');
-const checkButton = $('#checkButton');
-const charCount = $('#charCount');
-
-let selectedModel =
-  document.querySelector('[data-model].active')?.dataset.model || 'nb';
-
-/* --------------------------------------------------------------------
-   Turns the real cleaned text + label from the backend into a short,
-   honest explanation line — based on what the model actually saw,
-   not a fake pre-classification heuristic.
-   -------------------------------------------------------------------- */
-function explainResult(cleaned, scam) {
-  const indicators = [];
-
-  if (cleaned.includes('urltoken')) indicators.push('an unfamiliar link');
-  if (cleaned.includes('phonetoken')) indicators.push('a phone number');
-  if (/\b(verify|block|urgent|prize|jeeta|otp|password|account)\b/.test(cleaned)) {
-    indicators.push('reward or account-pressure language');
-  }
-
-  if (scam) {
-    return `The model picked up on ${
-      indicators.length
-        ? indicators.join(', ')
-        : 'word patterns commonly found in suspicious messages'
-    }. Avoid opening the link or sharing an OTP.`;
-  }
-
-  return 'No strong reward, payment, or account-verification signal was found in the cleaned text. Still verify anything important through a known contact.';
+const input = $('#messageInput');
+const form = $('#detectorForm');
+const button = $('#checkButton');
+const result = $('#resultCard');
+const empty = $('#emptyResult');
+const error = $('#errorState');
+let activeRequest = null;
+const examples = {
+  prize: 'Mubarak ho! Aap ne prize jeeta hai. Claim karne ke liye apni bank details bhejain.',
+  reminder: 'Kal meeting 11 baje hai office mein, time pe pohanch jana.'
+};
+function resetResult() {
+  result.hidden = true;
+  empty.hidden = false;
+  error.hidden = true;
+  $('#analyticsSaveWarning').hidden = true;
 }
-
-async function classifyMessage(message, model) {
-  const response = await fetch('/predict', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, model }),
-  });
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(data.error || 'Kuch ghalat ho gaya.');
-  }
-
-  const scam = data.label === 'Scam';
-
-  return {
-    scam,
-    confidence: data.confidence,
-    cleaned: data.cleaned,
-    model: data.model_used,
-    explanation: explainResult(data.cleaned, scam),
-  };
-}
-
-function renderResult(result) {
-  resultCard.hidden = false;
-
-  resultCard.className = `result-card ${result.scam ? 'is-scam' : ''}`;
-
-  const confidenceBlock =
-    result.confidence !== null && result.confidence !== undefined
-      ? `
-    <div class="confidence">
-      <div class="confidence-meta">
-        <span>Model confidence · ${result.model}</span>
-        <strong>${result.confidence}%</strong>
-      </div>
-
-      <div class="confidence-track">
-        <div class="confidence-fill" style="width: ${result.confidence}%"></div>
-      </div>
-    </div>
-  `
-      : `
-    <div class="confidence">
-      <div class="confidence-meta">
-        <span>${result.model} prediction</span>
-      </div>
-    </div>
-  `;
-
-  resultCard.innerHTML = `
-    <div class="result-header">
-      <div class="result-icon">
-        ${result.scam ? '!' : '✓'}
-      </div>
-
-      <div>
-        <h4>
-          ${result.scam ? 'This looks like a scam' : 'No strong scam signal found'}
-        </h4>
-
-        <p>
-          ${
-            result.scam
-              ? 'Treat this message as unsafe.'
-              : 'Still verify anything important through a known contact.'
-          }
-        </p>
-      </div>
-    </div>
-
-    ${confidenceBlock}
-
-    <div class="result-explanation">
-      <strong>Why it landed here:</strong>
-      ${result.explanation}
-    </div>
-
-    <button class="cleaned-toggle" id="cleanedToggle" type="button" aria-expanded="false">
-      What the model saw <span>⌄</span>
-    </button>
-
-    <pre class="cleaned-text" id="cleanedText" hidden>${result.cleaned}</pre>
-  `;
-
-  const cleanedToggle = $('#cleanedToggle');
-  const cleanedText = $('#cleanedText');
-
-  cleanedToggle.addEventListener('click', () => {
-    const isHidden = cleanedText.hidden;
-    cleanedText.hidden = !isHidden;
-    cleanedToggle.setAttribute('aria-expanded', String(isHidden));
-  });
-}
-
 function showError(message) {
-  errorState.hidden = false;
-  errorState.textContent = `!  ${message}`;
+  error.textContent = message;
+  error.hidden = false;
 }
-
-messageInput.addEventListener('input', () => {
-  charCount.textContent = `${messageInput.value.length} / 500`;
-  errorState.hidden = true;
-});
-
-document.querySelectorAll('[data-model]').forEach((button) => {
-  if (button.disabled) return;
-
-  button.addEventListener('click', () => {
-    selectedModel = button.dataset.model;
-
-    document.querySelectorAll('[data-model]').forEach((option) => {
-      const active = option === button;
-      option.classList.toggle('active', active);
-      option.setAttribute('aria-checked', String(active));
-    });
+function updateInput() {
+  $('#charCount').textContent = `${input.value.length} / ${input.maxLength}`;
+  input.removeAttribute('aria-invalid');
+  resetResult();
+  if (activeRequest) activeRequest.abort();
+}
+input.addEventListener('input', updateInput);
+document.querySelectorAll('[data-example]').forEach((example) => {
+  example.addEventListener('click', () => {
+    input.value = examples[example.dataset.example];
+    updateInput();
+    input.focus();
   });
 });
-
-document.querySelectorAll('[data-example]').forEach((button) => {
-  button.addEventListener('click', () => {
-    messageInput.value =
-      button.dataset.example === 'scam' ? scamExample : genuineExample;
-
-    messageInput.dispatchEvent(new Event('input'));
-
-    resultCard.hidden = true;
-    messageInput.focus();
-  });
+$('#clearButton').addEventListener('click', () => {
+  input.value = '';
+  updateInput();
+  input.focus();
 });
-
-$('#detectorForm').addEventListener('submit', async (event) => {
+function renderResult(data) {
+  const scam = data.label === 'Scam';
+  result.className = scam ? 'is-scam' : 'is-authentic';
+  $('#resultIcon').textContent = scam ? '!' : '✓';
+  $('#resultKicker').textContent = scam ? 'SCAM DETECTED' : 'LOOKS AUTHENTIC';
+  $('#resultTitle').textContent = scam ? 'Pause. This may be a scam.' : 'This looks authentic.';
+  $('#resultDescription').textContent = scam
+    ? 'The model classified this message as a potential scam. Treat the request with caution.'
+    : 'The model classified this message as authentic. This does not verify the sender or their request.';
+  const hasConfidence = typeof data.confidence === 'number' && Number.isFinite(data.confidence)
+    && data.confidence >= 0 && data.confidence <= 100;
+  $('#confidenceBlock').hidden = !hasConfidence;
+  $('#confidenceValue').textContent = hasConfidence ? `${data.confidence.toFixed(1)}%` : '';
+  const advice = scam
+    ? ['Do not click suspicious links.', 'Do not share OTPs, PINs, or passwords.', 'Verify the request through official channels.']
+    : ['Verify sensitive requests with a known contact.', 'Keep OTPs, PINs, and passwords private.', 'Take extra care before sending money.'];
+  $('#resultAdvice').replaceChildren(...advice.map((text) => {
+    const item = document.createElement('li');
+    item.textContent = text;
+    return item;
+  }));
+  empty.hidden = true;
+  result.hidden = false;
+}
+form.addEventListener('submit', async (event) => {
   event.preventDefault();
-
-  const message = messageInput.value.trim();
-
-  if (!message) {
-    resultCard.hidden = true;
-    showError('Paste or type a message first. A message is needed before the models can inspect it.');
+  if (activeRequest) return;
+  resetResult();
+  const message = input.value;
+  if (!message.trim() || message.length > input.maxLength) {
+    showError(!message.trim() ? 'Paste or type a message first.' : `Use at most ${input.maxLength} characters.`);
+    input.setAttribute('aria-invalid', 'true');
+    input.focus();
     return;
   }
-
-  errorState.hidden = true;
-  resultCard.hidden = true;
-
-  checkButton.disabled = true;
-  checkButton.innerHTML = `
-    <span class="loading-spinner"></span>
-    Reading the signal...
-  `;
-
+  const controller = new AbortController();
+  activeRequest = controller;
+  let timedOut = false;
+  const timeout = setTimeout(() => { timedOut = true; controller.abort(); }, 15000);
+  button.disabled = true;
+  button.textContent = 'Analyzing message…';
+  const spinner = document.createElement('span');
+  spinner.className = 'loading-spinner';
+  spinner.setAttribute('aria-hidden', 'true');
+  button.append(spinner);
+  $('#resultRegion').setAttribute('aria-busy', 'true');
   try {
-    const result = await classifyMessage(message, selectedModel);
-    renderResult(result);
+    const response = await fetch('/predict', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message }), signal: controller.signal
+    });
+    let data;
+    try { data = await response.json(); }
+    catch { throw new Error('The checker returned an unreadable response. Please try again.'); }
+    if (!response.ok) throw new Error(data.error || 'We could not analyze this message.');
+    if (!['Scam', 'Genuine'].includes(data.label)) throw new Error('The checker returned an unexpected result. Please try again.');
+    document.dispatchEvent(new Event('scan-completed'));
+    if (input.value === message && !controller.signal.aborted) {
+      renderResult(data);
+      if (data.analytics_saved === false) {
+        $('#analyticsSaveWarning').textContent = 'Your prediction is ready, but its analytics could not be saved. Check local storage before trying again.';
+        $('#analyticsSaveWarning').hidden = false;
+      }
+    }
   } catch (err) {
-    showError(err.message);
+    if (timedOut) showError('The check took too long. Please try again.');
+    else if (err.name !== 'AbortError') showError(err instanceof TypeError
+      ? 'Could not connect to the local checker. Check that the app is running and try again.' : err.message);
   } finally {
-    checkButton.disabled = false;
-    checkButton.innerHTML = `
-      <span class="scan-icon">⌕</span>
-      Check this message
-    `;
+    clearTimeout(timeout);
+    activeRequest = null;
+    button.disabled = false;
+    button.textContent = 'Analyze Message →';
+    $('#resultRegion').setAttribute('aria-busy', 'false');
   }
 });
-
-/* Mobile navigation */
-
-const menuButton = $('#menuButton');
-const mobileNav = $('#mobileNav');
-
-menuButton.addEventListener('click', () => {
-  const isOpen = mobileNav.classList.toggle('open');
-  menuButton.setAttribute('aria-expanded', String(isOpen));
-  menuButton.setAttribute('aria-label', isOpen ? 'Close navigation' : 'Open navigation');
+const menu = $('#menuButton');
+const navigation = $('#navigation');
+function closeMenu() {
+  navigation.classList.remove('open');
+  menu.setAttribute('aria-expanded', 'false');
+  menu.setAttribute('aria-label', 'Open navigation');
+}
+menu.addEventListener('click', () => {
+  const open = navigation.classList.toggle('open');
+  menu.setAttribute('aria-expanded', String(open));
+  menu.setAttribute('aria-label', open ? 'Close navigation' : 'Open navigation');
 });
-
-mobileNav.querySelectorAll('a').forEach((link) => {
-  link.addEventListener('click', () => {
-    mobileNav.classList.remove('open');
-    menuButton.setAttribute('aria-expanded', 'false');
-    menuButton.setAttribute('aria-label', 'Open navigation');
-  });
+navigation.querySelectorAll('a').forEach((link) => link.addEventListener('click', closeMenu));
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && navigation.classList.contains('open')) { closeMenu(); menu.focus(); }
 });
-
-/* Scroll reveal animations */
-
-const observer = new IntersectionObserver(
-  (entries) => {
-    entries.forEach((entry) => {
-      if (entry.isIntersecting) {
-        entry.target.classList.add('is-visible');
-        observer.unobserve(entry.target);
-      }
+const sections = new IntersectionObserver((entries) => {
+  entries.forEach((entry) => {
+    if (!entry.isIntersecting) return;
+    navigation.querySelectorAll('a').forEach((link) => {
+      const active = link.hash === `#${entry.target.id}`;
+      link.classList.toggle('active', active);
+      if (active) link.setAttribute('aria-current', 'location');
+      else link.removeAttribute('aria-current');
     });
-  },
-  { threshold: 0.12 },
-);
-
-document.querySelectorAll('.reveal').forEach((element) => {
-  observer.observe(element);
-});
+  });
+}, { rootMargin: '-15% 0px -60% 0px' });
+document.querySelectorAll('main > section').forEach((section) => sections.observe(section));

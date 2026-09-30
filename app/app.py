@@ -1,103 +1,130 @@
-"""
-Roman Urdu Scam / Fraud SMS Detector — Flask Backend
-Partner B — Model + Custom HTML/CSS/JS UI (supports 3 models)
+"""Local ScamGuard web app using the existing trained artifacts."""
+from pathlib import Path
+import sys
+import warnings
+import joblib
+import numpy as np
+from flask import Flask, jsonify, render_template, request
+from sklearn.exceptions import InconsistentVersionWarning
+from werkzeug.exceptions import HTTPException
 
-HOW TO RUN:
-    1. Place this whole `app` folder (app.py, templates/, static/) inside
-       your project as: roman-urdu-scam-detector/app/
-    2. Make sure these exist in outputs/:
-           nb_model.pkl, svm_model.pkl, lr_model.pkl, my_vectorizer.pkl
-       (generated from the notebook — models you haven't saved yet will
-       simply show as disabled in the UI)
-    3. Install Flask once:
-           pip install flask
-    4. From the PROJECT ROOT folder, run:
-           python app/app.py
-    5. Open the link shown in the terminal (usually http://127.0.0.1:5000)
-"""
+BASE_DIR = Path(__file__).resolve().parent.parent
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
+from preprocessing.cleaner import preprocess_text
+from app.analytics import AnalyticsError, ScanHistory
 
-from flask import Flask, render_template, request, jsonify
-import pickle
-import os
-import re
-
-app = Flask(__name__)
-
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # project root
-OUTPUTS_DIR = os.path.join(BASE_DIR, "outputs")
-
-MODEL_FILES = {
-    "nb": ("nb_model.pkl", "Naive Bayes"),
-    "svm": ("svm_model.pkl", "SVM"),
-    "lr": ("lr_model.pkl", "Logistic Regression"),
-}
-
-models = {}
-vectorizer = None
-load_error = None
-
-try:
-    with open(os.path.join(OUTPUTS_DIR, "my_vectorizer.pkl"), "rb") as f:
-        vectorizer = pickle.load(f)
-
-    for key, (filename, _) in MODEL_FILES.items():
-        path = os.path.join(OUTPUTS_DIR, filename)
-        if os.path.exists(path):
-            with open(path, "rb") as f:
-                models[key] = pickle.load(f)
-except Exception as e:
-    load_error = str(e)
+MAX_MESSAGE_LENGTH = 2000
 
 
-def basic_clean(text: str) -> str:
-    text = text.lower()
-    text = re.sub(r"http\S+|www\.\S+", " urltoken ", text)
-    text = re.sub(r"\b\d{10,}\b", " phonetoken ", text)
-    text = re.sub(r"\*\d+#", " shortcodetoken ", text)
-    text = re.sub(r"\b\d+\b", " numtoken ", text)
-    text = re.sub(r"[^\w\s]", " ", text)
-    text = re.sub(r"\s+", " ", text).strip()
-    return text
+def load_artifacts(directory):
+    # Load only trusted repository artifacts; incompatible versions fail closed.
+    with warnings.catch_warnings():
+        warnings.simplefilter('error', InconsistentVersionWarning)
+        vectorizer = joblib.load(directory / 'my_vectorizer.pkl')
+        model = joblib.load(directory / 'nb_model.pkl')
+    if set(model.classes_) != {'Scam', 'Genuine'}:
+        raise ValueError('Unexpected model labels')
+    probe = vectorizer.transform([preprocess_text('account verify karein')])
+    if probe.shape[1] != model.n_features_in_:
+        raise ValueError('Model and vectorizer feature counts differ')
+    model.predict(probe)
+    return model, vectorizer
 
 
-@app.route("/")
-def home():
-    return render_template("index.html", available_keys=list(models.keys()))
-
-
-@app.route("/predict", methods=["POST"])
-def predict():
-    if load_error:
-        return jsonify({"error": f"Model load failed: {load_error}"}), 500
-
-    data = request.get_json(silent=True) or {}
-    message = (data.get("message") or "").strip()
-    model_key = data.get("model", "nb")
-
-    if not message:
-        return jsonify({"error": "Message khaali hai."}), 400
-
-    if model_key not in models:
-        return jsonify({"error": f"'{MODEL_FILES.get(model_key, (None, model_key))[1]}' abhi trained/saved nahi hai."}), 400
-
-    model = models[model_key]
-    cleaned = basic_clean(message)
-    vector = vectorizer.transform([cleaned])
-    prediction = model.predict(vector)[0]
-
+def create_app(artifacts_dir=None, history_path=None):
+    app = Flask(__name__)
+    app.config['MAX_CONTENT_LENGTH'] = 32 * 1024
+    app.extensions['scan_history'] = ScanHistory(
+        history_path if history_path is not None else BASE_DIR / 'data/scan_history.json')
     try:
-        proba = model.predict_proba(vector)[0]
-        confidence = round(max(proba) * 100, 1)
-    except Exception:
-        confidence = None
+        app.extensions['scan_history'].records()
+    except AnalyticsError:
+        app.logger.warning('Analytics unavailable; existing history left untouched.')
+    try:
+        app.extensions['classifier'] = load_artifacts(
+            Path(artifacts_dir) if artifacts_dir else BASE_DIR / 'outputs')
+    except Exception as error:
+        app.extensions['classifier'] = None
+        app.logger.error('Could not load ML artifacts (%s). Check files and dependency versions.',
+                         type(error).__name__)
 
-    return jsonify({
-        "label": prediction,
-        "confidence": confidence,
-        "cleaned": cleaned,
-        "model_used": MODEL_FILES[model_key][1],
-    })
+    @app.after_request
+    def privacy_headers(response):
+        response.headers['Cache-Control'] = 'no-store'
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        response.headers['Referrer-Policy'] = 'no-referrer'
+        response.headers['Content-Security-Policy'] = (
+            "default-src 'self'; script-src 'self'; style-src 'self'; "
+            "img-src 'self' data:; connect-src 'self'; base-uri 'self'; "
+            "form-action 'self'; frame-ancestors 'none'")
+        return response
+
+    @app.get('/')
+    def home():
+        return render_template('index.html', max_length=MAX_MESSAGE_LENGTH,
+                               model_ready=app.extensions['classifier'] is not None)
+
+    @app.get('/api/analytics')
+    def analytics():
+        try:
+            return jsonify(app.extensions['scan_history'].summary())
+        except AnalyticsError:
+            return jsonify(error='Scan history could not be read. Existing data has been preserved. Check local storage and retry.'), 503
+
+    @app.post('/predict')
+    def predict():
+        if not request.is_json:
+            return jsonify(error='Send a JSON object containing a message.'), 415
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict) or not isinstance(data.get('message'), str):
+            return jsonify(error='Message must be a text string in a JSON object.'), 400
+        message = data['message']
+        if len(message) > MAX_MESSAGE_LENGTH:
+            return jsonify(error=f'Use at most {MAX_MESSAGE_LENGTH:,} characters.'), 400
+        if not message.strip():
+            return jsonify(error='Paste or type a message first.'), 400
+        artifacts = app.extensions['classifier']
+        if artifacts is None:
+            return jsonify(error='The message checker is temporarily unavailable. Please try again later.'), 503
+        model, vectorizer = artifacts
+        try:
+            cleaned = preprocess_text(message)
+            if not cleaned:
+                return jsonify(error='Please enter a Roman Urdu message with meaningful words.'), 400
+            vector = vectorizer.transform([cleaned])
+            if vector.nnz == 0:
+                return jsonify(error='The model does not recognize enough of this text to assess it. Try a complete Roman Urdu message.'), 422
+            prediction = str(model.predict(vector)[0])
+            if prediction not in {'Scam', 'Genuine'}:
+                raise ValueError('Unexpected prediction')
+            confidence = None
+            if callable(getattr(model, 'predict_proba', None)):
+                probabilities = model.predict_proba(vector)[0]
+                probability = float(probabilities[list(model.classes_).index(prediction)])
+                if np.isfinite(probability) and 0 <= probability <= 1:
+                    confidence = round(probability * 100, 1)
+            analytics_saved = True
+            try:
+                app.extensions['scan_history'].append(prediction, confidence)
+            except AnalyticsError:
+                analytics_saved = False
+                app.logger.warning('Prediction succeeded but analytics could not be saved.')
+            return jsonify(label=prediction, confidence=confidence, model_used='Naive Bayes',
+                           analytics_saved=analytics_saved)
+        except Exception as error:
+            # Never log user text or exceptions that could contain it.
+            app.logger.error('Prediction failed (%s)', type(error).__name__)
+            return jsonify(error='We could not analyze this message. Please try again.'), 500
+
+    @app.errorhandler(HTTPException)
+    def http_error(error):
+        message = 'Request is too large.' if error.code == 413 else error.name
+        return jsonify(error=message), error.code
+
+    return app
 
 
-if __name__ == "__main__":
-    app.run(debug=True)
+app = create_app()
+if __name__ == '__main__':
+    app.run(host='127.0.0.1', port=5000, debug=False)

@@ -1,0 +1,1 @@
+"""ScamGuard Flask application package."""

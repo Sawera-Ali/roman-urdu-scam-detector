@@ -1,0 +1,18 @@
+﻿{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "ScamGuard: Open browser when ready",
+      "type": "process",
+      "command": "${workspaceFolder}/.venv/Scripts/python.exe",
+      "args": ["-u", "${workspaceFolder}/.vscode/open_browser.py"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "silent",
+        "panel": "dedicated",
+        "showReuseMessage": false
+      }
+    }
+  ]
+}
