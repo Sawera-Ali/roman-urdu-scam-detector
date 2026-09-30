@@ -1,0 +1,24 @@
+<section id="dashboard" class="section dashboard-section">
+  <div class="container">
+    <div class="section-heading"><div><p class="eyebrow">YOUR LOCAL SCAN ANALYTICS</p><h2>A clearer view of your checks.</h2></div><button id="refreshAnalytics" class="button primary" type="button">Refresh analytics</button></div>
+    <p class="dashboard-intro">Real scan results from this local app. Only result, model confidence, scan ID, and time are saved. Your message text is never stored.</p>
+    <p id="analyticsStatus" role="status">Loading scan history…</p>
+    <div id="analyticsContent" hidden>
+      <div class="stat-grid">
+        <article class="stat-card"><h3>Total scans</h3><strong id="totalScans">0</strong><p>Successful checks saved</p></article>
+        <article class="stat-card"><h3>Scam detected</h3><strong id="totalScam">0</strong><p>Classified as Scam</p></article>
+        <article class="stat-card"><h3>Authentic messages</h3><strong id="totalAuthentic">0</strong><p>Classified as Genuine</p></article>
+        <article class="stat-card"><h3>Scam rate</h3><strong id="scamRate">0%</strong><p>Share of saved scans</p></article>
+      </div>
+      <div id="analyticsEmpty" class="analytics-empty" hidden><h3>Your first check starts the story.</h3><p>No scans saved yet. Analyze a message to see real results here.</p><a class="text-link" href="#checker">Check a message →</a></div>
+      <div id="analyticsCharts" hidden>
+        <div class="analytics-chart-grid">
+          <article class="analytics-card"><h3>Scam vs Authentic</h3><p>All saved scans</p><div class="donut-layout"><svg id="distributionChart" viewBox="0 0 240 240" aria-label="Scam versus Authentic scan distribution"></svg><div id="distributionLegend"></div></div></article>
+          <article class="analytics-card"><h3>Recent model confidence</h3><p>Latest 20 scans, oldest to newest · 0–100%</p><svg id="confidenceChart" viewBox="0 0 600 240" aria-label="Confidence of recent scans"></svg><p class="chart-note">Confidence belongs to the predicted label. It is not a risk score or a guarantee. Missing confidence is omitted from the plot.</p><div class="chart-legend"><span class="scam-key">● Scam</span><span class="authentic-key">● Authentic</span></div></article>
+        </div>
+        <div id="chartTooltip" class="chart-tooltip" role="status">Hover over or focus a chart mark for details.</div>
+        <article class="analytics-card history-card"><h3>Recent scan history</h3><p>Latest 20 scans · newest first · times shown in your local timezone</p><div class="history-scroll"><table><thead><tr><th scope="col">Scan #</th><th scope="col">Result</th><th scope="col">Model confidence</th><th scope="col">Date / time</th></tr></thead><tbody id="scanHistory"></tbody></table></div></article>
+      </div>
+    </div>
+  </div>
+</section>

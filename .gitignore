@@ -11,8 +11,30 @@ venv/
 # OS / editor
 .DS_Store
 Thumbs.db
-.vscode/
+# Share only portable project launch configuration.
+.vscode/*
+!.vscode/launch.json
+!.vscode/tasks.json
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/open_browser.py
 .idea/
 
 # Excel lock files
 ~$*.xlsx
+
+# Local scan metadata
+data/scan_history.json
+data/scan_history.json.*.tmp
+
+# Local caches, logs, and credentials
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.log
+*.tmp
+.env
+.env.*
+!.env.example
